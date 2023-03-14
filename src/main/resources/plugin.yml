@@ -1,0 +1,4 @@
+name: AntiLavaPlace
+version: '${project.version}'
+main: me.modernadventurer.antilavaplace.AntiLavaPlace
+api-version: 1.19

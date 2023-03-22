@@ -1,4 +1,4 @@
-name: AntiLavaPlace
+name: WaterBreather
 version: '${project.version}'
-main: me.modernadventurer.antilavaplace.AntiLavaPlace
+main: me.modernadventurer.waterbreather.WaterBreather
 api-version: 1.19

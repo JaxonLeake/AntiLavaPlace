@@ -2,3 +2,4 @@ name: WaterBreather
 version: '${project.version}'
 main: me.modernadventurer.waterbreather.WaterBreather
 api-version: 1.19
+depend: [ ProtocolLib ]

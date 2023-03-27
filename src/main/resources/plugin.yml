@@ -1,5 +1,5 @@
-name: WaterBreather
+name: AquaticPlayers
 version: '${project.version}'
-main: me.modernadventurer.waterbreather.WaterBreather
+main: me.modernadventurer.aquaticplayers.AquaticPlayers
 api-version: 1.19
-depend: [ ProtocolLib ]
+depend: [ ProtocolLib, WorldGuard ]

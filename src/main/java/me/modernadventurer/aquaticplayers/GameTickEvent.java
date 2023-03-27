@@ -1,4 +1,4 @@
-package me.modernadventurer.waterbreather;
+package me.modernadventurer.aquaticplayers;
 
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.server.ServerEvent;

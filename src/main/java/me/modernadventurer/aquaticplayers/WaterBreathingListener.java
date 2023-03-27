@@ -1,4 +1,4 @@
-package me.modernadventurer.waterbreather;
+package me.modernadventurer.aquaticplayers;
 
 import org.bukkit.*;
 import org.bukkit.block.Block;
@@ -9,19 +9,16 @@ import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.potion.PotionEffectType;
 
-import java.util.Map;
+public class WaterBreathingListener implements Listener {
 
-public class MyListener implements Listener {
+    private final AquaticPlayers plugin;
 
-    private WaterBreather plugin;
-
-    public MyListener(WaterBreather plugin) {
+    public WaterBreathingListener(AquaticPlayers plugin) {
         this.plugin = plugin;
     }
 
@@ -39,7 +36,7 @@ public class MyListener implements Listener {
                     if(!isUnderwater(player) || inWaterColumn(player)) {
                         // the air supply value decreases each tick. (USED TO BE -1 PER TICK, 10X FASTER)
                         if(!player.hasPotionEffect(PotionEffectType.WATER_BREATHING)) {
-                            player.getPersistentDataContainer().set(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER, player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER)-10);
+                            player.getPersistentDataContainer().set(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER, player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER) - 10);
                         }
                         // Respiration gives a chance for air supply to not decrease itself per tick.
                         // Chance is x/(x + 1), where x is the level of enchantment.
@@ -48,16 +45,19 @@ public class MyListener implements Listener {
                             if(helmet.getEnchantments().containsKey(Enchantment.OXYGEN)) {
                                 int respirationLevel = helmet.getEnchantments().get(Enchantment.OXYGEN);
                                 if(Math.random()>(respirationLevel/(respirationLevel+10))) {
-                                    player.getPersistentDataContainer().set(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER, player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER)+10);
+                                    player.getPersistentDataContainer().set(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER, player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER) + 10);
                                 }
                             }
                         }
-                        // when the air supply value reaches -5. (USED TO BE -20, 4X FASTER)
-                        if(player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER) <= -5) {
-                            // 2 Damage is taken
-                            player.damage(2);
-                            // Air resets to 0 after damaging.
+                        // when the air supply value reaches -100 (-10 per tick, 10 ticks). (USED TO BE -20, -1 per tick, 20 ticks)
+                        if(player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER) <= -100) {
+                            // Air resets to 0
                             player.getPersistentDataContainer().set(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER, 0);
+                            // 2 Damage is taken
+                            if(player.getHealth() > 0) {
+                                world.playSound(player.getLocation(), Sound.ENTITY_PLAYER_HURT_DROWN, 1, 1);
+                                player.damage(2);
+                            }
                         }
                     } else {
                         // every 0.2 seconds (4 game ticks)
@@ -69,10 +69,23 @@ public class MyListener implements Listener {
                             }
                         }
                     };
-                    player.setRemainingAir(player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER));
+                    int airDisplay = player.getPersistentDataContainer().get(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER);
+                    if(airDisplay >= 300) {
+                        airDisplay = -10;
+                    }
+                    if(airDisplay <= 0) {
+                        airDisplay = -10;
+                    }
+                    player.setRemainingAir(airDisplay);
                 }
             }
         }
+    }
+
+    @EventHandler
+    public void onRespawnEvent(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        player.getPersistentDataContainer().set(new NamespacedKey(plugin, "Oxygen"), PersistentDataType.INTEGER, 300);
     }
 
     public Boolean isUnderwater(Player player) {

@@ -1,16 +1,17 @@
-package me.modernadventurer.waterbreather;
+package me.modernadventurer.aquaticplayers;
 
+import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldguard.LocalPlayer;
+import com.sk89q.worldguard.WorldGuard;
+import com.sk89q.worldguard.bukkit.WorldGuardPlugin;
+import com.sk89q.worldguard.protection.flags.Flags;
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandSender;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import com.comphenix.protocol.PacketType;
@@ -23,29 +24,24 @@ import com.comphenix.protocol.events.PacketEvent;
 import com.comphenix.protocol.wrappers.*;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.UUID;
 
 import static java.lang.Math.min;
-import static java.lang.Math.pow;
 
-public final class WaterBreather extends JavaPlugin {
+public final class AquaticPlayers extends JavaPlugin {
 
     ProtocolManager protocolManager;
-    WaterBreather plugin;
+    AquaticPlayers plugin;
 
     @Override
     public void onEnable() {
         // Plugin startup logic
         plugin = this;
-        getServer().getPluginManager().registerEvents(new MyListener(this), this);
+        getServer().getPluginManager().registerEvents(new WaterBreathingListener(this), this);
         protocolManager = ProtocolLibrary.getProtocolManager();
         registerBlockBreakListener();
-
-        //Objects.requireNonNull(getCommand("blockbreakanimation")).setExecutor(this);
 
         this.getServer().getScheduler().scheduleSyncRepeatingTask(this, new Runnable() {
             int tick = 0;
@@ -56,60 +52,62 @@ public final class WaterBreather extends JavaPlugin {
         }, 0L, 1L);
     }
 
-    // Implement the command executor
-   /* @Override
-    public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
-        if (cmd.getName().equalsIgnoreCase("blockbreakanimation")) {
-            if (!(sender instanceof Player)) {
-                sender.sendMessage("This command can only be run by a player.");
-                return true;
-            }
-
-            Player player = (Player) sender;
-            Location loc = player.getTargetBlock(null, 5).getLocation();
-            int breakStage = 9; // Default break stage
-            if (args.length > 0) {
-                try {
-                    breakStage = Integer.parseInt(args[0]);
-                    if (breakStage < -1 || breakStage > 9) {
-                        throw new NumberFormatException();
-                    }
-                } catch (NumberFormatException e) {
-                    sender.sendMessage("Invalid break stage. Must be an integer between 0 and 9.");
-                    return true;
-                }
-            }
-            sendBlockBreakAnimation(player, loc, breakStage);
-
-            return true;
-        }
-
-        return false;
-    }
-*/
     private void registerBlockBreakListener() {
         Map<UUID, BukkitRunnable> breakTasks = new HashMap<>();
         protocolManager.addPacketListener(new PacketAdapter(this, ListenerPriority.HIGHEST, PacketType.Play.Client.BLOCK_DIG) {
             @Override
             public void onPacketReceiving(PacketEvent event) {
+                Player player = event.getPlayer();
+                World world = event.getPlayer().getWorld();
+                BlockPosition pos = event.getPacket().getBlockPositionModifier().read(0);
+                Location loc = pos.toLocation(world);
+
+                if (!WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(WorldGuardPlugin.inst().wrapPlayer(player), BukkitAdapter.adapt(world))) {
+                    // If the player doesn't have WorldGuard bypass permission in this world, check if they can break the block
+                    if (!WorldGuard.getInstance().getPlatform().getRegionContainer().createQuery().testBuild(BukkitAdapter.adapt(loc), WorldGuardPlugin.inst().wrapPlayer(player), Flags.BUILD)) {
+                        // If the block is not allowed to be broken by the player, cancel the event
+                        return;
+                    }
+                }
+
                 PacketContainer packet = event.getPacket();
                 EnumWrappers.PlayerDigType digType = packet.getPlayerDigTypes().getValues().get(0);
-                BlockPosition pos = event.getPacket().getBlockPositionModifier().read(0);
-                Location loc = pos.toLocation(event.getPlayer().getWorld());
                 Block block = loc.getBlock();
-                Player player = event.getPlayer();
                 if(digType.equals(EnumWrappers.PlayerDigType.START_DESTROY_BLOCK)) {
+                    ItemStack tool = player.getInventory().getItemInMainHand();
                     BukkitRunnable breakTask = new BukkitRunnable() {
                         float breakProgress = 0;
-                        final float breakSpeed = getBreakSpeedIgnoreWater(player, block);
+
+                        final Sound breakSound = block.getBlockData().getSoundGroup().getBreakSound();
 
                         @Override
                         public void run() {
-                            breakProgress += breakSpeed;
+                            breakProgress += getBreakSpeedIgnoreWater(player, block);
                             sendBlockBreakAnimation(player, loc, getBreakStage(breakProgress));
                             if(breakProgress > 1) {
                                 // the block breaks
-                                block.breakNaturally();
+                                world.playSound(loc, breakSound, 1, 1);
+                                block.breakNaturally(tool);
+
+                                // Subtract the tool's durability
+                                if (tool.getType() != Material.AIR) {
+                                    if(tool instanceof Damageable) {
+                                        Damageable toolDamageable = (Damageable) tool.getItemMeta();
+                                        int unbreakingLevel = tool.getEnchantmentLevel(Enchantment.DURABILITY);
+                                        double unbreakingProbability = 1.0 / (unbreakingLevel + 1.0);
+                                        // Only apply damage with the calculated probability based on the Unbreaking level
+                                        if (Math.random() < unbreakingProbability) {
+                                            toolDamageable.setDamage(toolDamageable.getDamage() + 1);
+                                            if (toolDamageable.getDamage() >= tool.getType().getMaxDurability()) {
+                                                player.getInventory().setItemInMainHand(null);
+                                            } else {
+                                                tool.setItemMeta((ItemMeta) toolDamageable);
+                                                player.getInventory().setItemInMainHand(tool);
+                                            }
+                                        }
+                                    }
+                                }
+
                                 this.cancel();
                             }
                             if(!player.isOnline() || player.isDead() || player.getWorld() != loc.getWorld() || player.getLocation().distanceSquared(loc) > 64) {
@@ -147,7 +145,7 @@ public final class WaterBreather extends JavaPlugin {
         if (!onGround) {
             breakSpeed *= 5; // removes the floating penalty
         }
-        boolean inWater = player.getLocation().getBlock().isLiquid();
+        boolean inWater = player.getEyeLocation().getBlock().isLiquid();
         boolean hasAquaAffinity = player.getInventory().getHelmet() != null && player.getInventory().getHelmet().containsEnchantment(Enchantment.WATER_WORKER);
         if (inWater && !hasAquaAffinity) {
             breakSpeed *= 5; // removes the underwater penalty
